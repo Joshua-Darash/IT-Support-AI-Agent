@@ -1,0 +1,441 @@
+{
+  "name": "Otic IT Support Agent - Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {}
+      },
+      "id": "59a03045-705d-4eda-81c2-82ce1a38f411",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1328,
+        208
+      ],
+      "webhookId": "c4602d01-959c-4f94-bc40-a7d8c08447d9"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════════\n// SAFETY LAYER — replaces broken Guardrails node\n// Detects prompt injection & sensitive data\n// ══════════════════════════════════════════════\n\nconst input = $input.first().json;\nconst chatInput = String(input.chatInput || input.message || input.text || '');\n\nconst INJECTION_PATTERNS = [\n  /ignore (previous|all|your) instructions/i,\n  /delete all (tickets|data|logs|records)/i,\n  /forget (everything|your instructions)/i,\n  /you are now (a different|an unrestricted|DAN)/i,\n  /act as (a different|an unrestricted)/i,\n  /bypass (safety|restrictions|guardrails)/i,\n  /reveal (your )?(system prompt|instructions)/i,\n  /pretend (you are|to be) (an? )?(unrestricted|jailbroken)/i,\n  /ignore previous/i,\n  /disregard (your|all) instructions/i\n];\n\nconst SENSITIVE_PATTERNS = [\n  { pattern: /password\\s*[:=]\\s*\\S+/i,    replacement: 'password=[REDACTED]' },\n  { pattern: /api[_-]?key\\s*[:=]\\s*\\S+/i, replacement: 'api_key=[REDACTED]' },\n  { pattern: /secret\\s*[:=]\\s*\\S+/i,      replacement: 'secret=[REDACTED]' },\n  { pattern: /token\\s*[:=]\\s*\\S+/i,       replacement: 'token=[REDACTED]' }\n];\n\nlet blocked = false;\nlet blockReason = '';\nfor (const pattern of INJECTION_PATTERNS) {\n  if (pattern.test(chatInput)) {\n    blocked = true;\n    blockReason = 'Prompt injection detected: ' + pattern.toString();\n    break;\n  }\n}\n\nlet safeInput = chatInput;\nconst redactions = [];\nif (!blocked) {\n  for (const sp of SENSITIVE_PATTERNS) {\n    if (sp.pattern.test(safeInput)) {\n      redactions.push('Redacted: ' + sp.replacement.split('=')[0]);\n      safeInput = safeInput.replace(sp.pattern, sp.replacement);\n    }\n  }\n}\n\nreturn [{\n  json: {\n    chatInput: safeInput,\n    originalInput: chatInput,\n    blocked,\n    blockReason,\n    redactions,\n    safetyChecked: true,\n    timestamp: new Date().toISOString(),\n    sessionId: Math.random().toString(36).slice(2, 11) \n  }\n}];"
+      },
+      "id": "9219aace-33fd-4e8b-917a-a3432ad90ce3",
+      "name": "Safety Layer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.blocked }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7da6239a-6e98-42ee-92c8-38d53692dc8b",
+      "name": "Safe or Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -880,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Returns a safe refusal message back into the chat flow\nconst reason = $input.first().json.blockReason || 'Unknown';\nreturn [{\n  json: {\n    output: 'This request is outside my role and has been blocked. Prompt injection attempts are logged. How can I help you with an IT incident today?',\n    blocked: true,\n    blockReason: reason\n  }\n}];"
+      },
+      "id": "f26d39ec-f438-4278-915f-fc4cb74f14a1",
+      "name": "Return Block Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an Agentic IT Support Assistant. Diagnose and resolve IT incidents using a strict reasoning loop. Never answer from memory alone.\n\n━━━ REASONING LOOP (follow for every incident) ━━━\nTHOUGHT → ACTION → OBSERVATION → REFLECTION\nRepeat until you have enough evidence to respond. Always call at least one tool before replying.\n\n━━━ AUTOMATED ANALYSIS PROCESS ━━━\nFor EVERY incident, automatically:\n1. Call runbook_search FIRST — finds the relevant IT runbook (KB-001 to KB-007)\n2. Call status_check — verify service state and restart count\n3. Call log_search — identify error patterns in logs\n4. Call server_metrics — check CPU, memory, disk usage\n5. Respond using EXACTLY this labelled format:\n\n🔍 INCIDENT: [one-line summary]\n📋 EVIDENCE:\n• [tool]: [finding]\n• [tool]: [finding]\n📖 RUNBOOK: [cite the runbook ID and relevant steps found]\n⚠️ ROOT CAUSE: [conclusion from evidence only]\n✅ ACTIONS:\n1. [immediate step]\n2. [follow-up step]\n3. [preventive step]\n👥 TEAM: [IT Operations|Network Team|SRE Team|Mail Admin]\n🎯 SEVERITY: [critical|high|medium|low]\n🎫 TICKET: Ready to create — please confirm.\n\n━━━ SEVERITY GUIDE ━━━\ncritical → service down, all users affected, OOM loop, disk 100%, cert expired, >5 restarts/24h\nhigh     → major degradation, CPU>90%, disk>90%, multi-user impact\nmedium   → partial issue, workaround exists, limited impact\nlow      → minor warning, no user impact, can be scheduled\n\n━━━ TEAM ASSIGNMENT ━━━\nNetwork Team → VPN, connectivity, DNS, firewall\nSRE Team → Application crashes, performance, scaling\nIT Operations → General system issues, disk, backups\nMail Admin → Email service, SMTP, mailbox issues\n\n━━━ HARD LIMITS ━━━\n✗ Never hallucinate tool results\n✗ Never store or repeat passwords, tokens, or secrets\n✗ Base all conclusions on actual tool evidence\n✗ Always call runbook_search before giving recommendations",
+          "maxIterations": 20
+        }
+      },
+      "id": "0496dd1a-cff0-44ff-8c86-324337a1a824",
+      "name": "IT Support Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -272,
+        400
+      ],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "0e727058-00af-416f-8f31-3250f8fe3608",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -832,
+        640
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "cP5eYxxpg0SGUAXq",
+          "name": "n8n free OpenAI API credits"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "id": "871d0ef7-5aa3-4f6d-8eb8-0af35b0358b7",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -624,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "name": "log_search",
+        "description": "Retrieve service logs. Parameters: service (nginx|vpn|app|mail|disk), level (ERROR|WARN|INFO|all), since (1h|6h|24h)",
+        "jsCode": "const service = $fromAI('service', 'Service name (nginx, vpn, app, mail, disk)', 'string');\nconst level = $fromAI('level', 'Log level filter (ERROR, WARN, INFO, all)', 'string', 'all');\nconst since = $fromAI('since', 'Time range (1h, 6h, 24h)', 'string', '1h');\n\nconst logDatabase = {\n  app: [\n    { timestamp: '2026-03-04T10:45:23Z', level: 'ERROR', message: 'OOMKilled: container exceeded 2Gi memory limit' },\n    { timestamp: '2026-03-04T10:45:20Z', level: 'ERROR', message: 'OutOfMemoryError: Java heap space' },\n    { timestamp: '2026-03-04T10:45:15Z', level: 'WARN',  message: 'Memory usage at 96%, GC overhead limit exceeded' },\n    { timestamp: '2026-03-04T10:45:10Z', level: 'INFO',  message: 'Service restarting... (attempt 7 of 10)' },\n    { timestamp: '2026-03-04T10:44:58Z', level: 'ERROR', message: 'NullPointerException at OrderService.java:142' },\n    { timestamp: '2026-03-04T10:44:45Z', level: 'ERROR', message: 'Application crash detected - core dumped' }\n  ],\n  nginx: [\n    { timestamp: '2026-03-04T10:45:23Z', level: 'ERROR', message: 'upstream timed out (110) reading response header from 10.0.1.10:8080' },\n    { timestamp: '2026-03-04T10:45:20Z', level: 'ERROR', message: '502 Bad Gateway for POST /api/orders' },\n    { timestamp: '2026-03-04T10:45:15Z', level: 'WARN',  message: 'worker connections running out (1024/1024 used)' },\n    { timestamp: '2026-03-04T10:44:50Z', level: 'ERROR', message: 'Upstream server connection refused: 10.0.1.10:8080' }\n  ],\n  vpn: [\n    { timestamp: '2026-03-04T10:45:23Z', level: 'ERROR', message: 'TLS handshake failed for peer 203.0.113.42' },\n    { timestamp: '2026-03-04T10:45:20Z', level: 'ERROR', message: 'Certificate expired: CN=vpn.internal, expiry=2026-03-01' },\n    { timestamp: '2026-03-04T10:45:15Z', level: 'WARN',  message: 'Certificate expiring in 0 days — renew immediately' },\n    { timestamp: '2026-03-04T10:45:10Z', level: 'WARN',  message: 'High latency detected: 250ms on tunnel' },\n    { timestamp: '2026-03-04T10:44:45Z', level: 'ERROR', message: 'Authentication failed for user admin@company.com' }\n  ],\n  mail: [\n    { timestamp: '2026-03-04T10:45:23Z', level: 'ERROR', message: 'SMTP connection timeout to relay.example.com:587' },\n    { timestamp: '2026-03-04T10:45:20Z', level: 'WARN',  message: 'Mail queue size approaching limit: 950/1000' },\n    { timestamp: '2026-03-04T10:45:15Z', level: 'ERROR', message: 'Mailbox quota exceeded for john@company.com (2048MB/2048MB)' },\n    { timestamp: '2026-03-04T10:44:50Z', level: 'ERROR', message: 'IMAP authentication failed for john@company.com' }\n  ],\n  disk: [\n    { timestamp: '2026-03-04T10:45:23Z', level: 'ERROR', message: 'Write failed: No space left on /dev/sda1' },\n    { timestamp: '2026-03-04T10:45:20Z', level: 'ERROR', message: '/var/log/app.log grew by 4.2GB in last hour' },\n    { timestamp: '2026-03-04T10:45:10Z', level: 'WARN',  message: '/dev/sda1 usage at 91% — critical threshold exceeded' },\n    { timestamp: '2026-03-04T10:44:30Z', level: 'WARN',  message: 'I/O error on device /dev/sdb — check SMART status' }\n  ]\n};\n\nconst svc = String(service).toLowerCase();\nlet logs = logDatabase[svc] || [{ timestamp: new Date().toISOString(), level: 'INFO', message: 'No logs found for service: ' + svc }];\n\nif (level && level.toLowerCase() !== 'all') {\n  logs = logs.filter(l => l.level.toLowerCase() === level.toLowerCase());\n}\n\nreturn JSON.stringify({\n  service: svc, level, since,\n  logCount: logs.length,\n  logs: logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\\n'),\n  summary: {\n    errorCount: logs.filter(l => l.level === 'ERROR').length,\n    warnCount: logs.filter(l => l.level === 'WARN').length,\n    infoCount: logs.filter(l => l.level === 'INFO').length\n  }\n});"
+      },
+      "id": "bef9fd50-cbe0-4115-9832-bfd48d9fb8ce",
+      "name": "Log Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "name": "server_metrics",
+        "description": "Get CPU/memory/disk/uptime for a server. Parameter: server (web-01|db-01|vpn-01|mail-01|app-01). Flags CPU>80%, memory>85%, disk>90% as critical.",
+        "jsCode": "const server = $fromAI('server', 'Server name (web-01, db-01, vpn-01, mail-01, app-01)', 'string');\n\nconst metricsDatabase = {\n  'app-01':  { cpu: 95, memory: 99, disk: 62, uptime: '0d 12m', load: '12.1 11.3 9.8', status: 'critical' },\n  'web-01':  { cpu: 87, memory: 72, disk: 91, uptime: '14d 3h', load: '8.2 7.9 7.1',   status: 'degraded' },\n  'db-01':   { cpu: 34, memory: 81, disk: 80, uptime: '120d 3h',load: '4.5 4.2 4.0',   status: 'healthy' },\n  'vpn-01':  { cpu: 23, memory: 70, disk: 45, uptime: '89d 15h', load: '0.5 0.4 0.3',  status: 'down' },\n  'mail-01': { cpu: 56, memory: 85, disk: 76, uptime: '67d 8h',  load: '2.0 1.9 1.7',  status: 'degraded' }\n};\n\nconst key = String(server).toLowerCase();\nconst data = metricsDatabase[key] || { cpu: 55, memory: 60, disk: 55, uptime: '5d', load: '2.0 1.9 1.8', status: 'unknown' };\n\nconst alerts = [];\nif (data.cpu > 80)    alerts.push('CRITICAL: CPU at ' + data.cpu + '% (threshold 80%)');\nif (data.memory > 85) alerts.push('CRITICAL: Memory at ' + data.memory + '% (threshold 85%)');\nif (data.disk > 90)   alerts.push('CRITICAL: Disk at ' + data.disk + '% (threshold 90%)');\n\nreturn JSON.stringify({\n  server: key, timestamp: new Date().toISOString(),\n  healthStatus: data.status, alerts,\n  metrics: {\n    cpu_pct: data.cpu, memory_pct: data.memory,\n    disk_pct: data.disk, uptime: data.uptime, load_avg: data.load\n  },\n  summary: `CPU:${data.cpu}% MEM:${data.memory}% DISK:${data.disk}% UP:${data.uptime}`\n});"
+      },
+      "id": "4d0c3674-05b9-44c3-ab0e-dd5baf8458f2",
+      "name": "Server Metrics Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "name": "status_check",
+        "description": "Check service state and health. Parameters: service (nginx|vpn|app|mail|database), server (optional: app-01|web-01|db-01|vpn-01|mail-01). If restarts_24h > 5, treat as critical crash loop.",
+        "jsCode": "const service = $fromAI('service', 'Service name (nginx, vpn, app, mail, database)', 'string');\nconst server = $fromAI('server', 'Server name (optional)', 'string', 'auto');\n\nconst db = {\n  'app-01':  { app:      { status: 'restarting', state: 'unstable', uptime: '3 minutes',  restarts_24h: 12, lastRestart: '2 minutes ago',  pid: 8472,  port: 8080, healthCheck: 'failing' }},\n  'web-01':  { nginx:    { status: 'degraded',   state: 'running',  uptime: '14d 3h',      restarts_24h: 3,  lastRestart: '4 hours ago',   pid: 5678,  port: 80,   healthCheck: 'warning' }},\n  'db-01':   { database: { status: 'healthy',    state: 'running',  uptime: '120d 3h',     restarts_24h: 0,  lastRestart: '120 days ago',  pid: 9012,  port: 5432, healthCheck: 'passing' }},\n  'vpn-01':  { vpn:      { status: 'down',        state: 'stopped',  uptime: '0d 0h',       restarts_24h: 12, lastRestart: '18 min ago',    pid: null,  port: 1194, healthCheck: 'failing' }},\n  'mail-01': { mail:     { status: 'degraded',   state: 'running',  uptime: '2 hours',     restarts_24h: 3,  lastRestart: '15 min ago',    pid: 7890,  port: 25,   healthCheck: 'warning' }}\n};\n\nconst svc = String(service).toLowerCase();\nconst srv = String(server).toLowerCase();\n\nlet result = null;\nlet foundServer = null;\n\nif (srv !== 'auto' && db[srv] && db[srv][svc]) {\n  result = db[srv][svc];\n  foundServer = srv;\n} else {\n  for (const [s, services] of Object.entries(db)) {\n    if (services[svc]) { result = services[svc]; foundServer = s; break; }\n  }\n}\n\nif (!result) result = { status: 'unknown', state: 'unknown', uptime: 'N/A', restarts_24h: 0, lastRestart: 'N/A', pid: null, port: null, healthCheck: 'unknown' };\n\nconst crashLoop = result.restarts_24h > 5;\nconst warning = crashLoop ? 'CRASH LOOP DETECTED: ' + result.restarts_24h + ' restarts in 24h — treat as critical' : null;\n\nreturn JSON.stringify({\n  server: foundServer || 'unknown', service: svc,\n  timestamp: new Date().toISOString(),\n  status: result.status, state: result.state,\n  uptime: result.uptime, restarts_24h: result.restarts_24h,\n  lastRestart: result.lastRestart,\n  processInfo: { pid: result.pid, port: result.port },\n  healthCheck: result.healthCheck,\n  crash_loop_detected: crashLoop,\n  warning,\n  summary: `${svc} on ${foundServer}: ${result.status} (${result.restarts_24h} restarts/24h, health: ${result.healthCheck})`\n});"
+      },
+      "id": "ad591095-299d-4b11-8206-8a1c423fc4a3",
+      "name": "Status Check Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "name": "create_ticket",
+        "description": "Create a formal IT incident ticket. ONLY call after presenting findings to the user and receiving explicit confirmation. Parameters: title, severity (low|medium|high|critical), description, assigned_team.",
+        "jsCode": "const title       = $fromAI('title', 'Short incident title', 'string');\nconst severity    = $fromAI('severity', 'Severity: low|medium|high|critical', 'string', 'medium');\nconst description = $fromAI('description', 'Full diagnostic summary with evidence', 'string');\nconst team        = $fromAI('assigned_team', 'Team: IT Operations|Network Team|SRE Team|Mail Admin', 'string', 'IT Operations');\n\nconst ticketId = 'INC-' + Math.floor(1000 + Math.random() * 9000);\nconst slaMap = { critical: '1 hour', high: '4 hours', medium: '24 hours', low: '72 hours' };\n\nreturn JSON.stringify({\n  ticket_id:     ticketId,\n  status:        'open',\n  title,\n  severity,\n  description,\n  assigned_team: team,\n  created_at:    new Date().toISOString(),\n  sla_target:    slaMap[severity] || '24 hours',\n  created_by:    'Otic IT Support Agent'\n});"
+      },
+      "id": "bf684a77-36fb-4b85-8a60-efc8805e3517",
+      "name": "Create Ticket Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════\n// OBSERVABILITY TRACE LOGGER\n// Formats agent execution as a visible trace\n// ══════════════════════════════════════════\n\nconst items = $input.all();\nconst traces = [];\n\nfor (const item of items) {\n  const json = item.json || {};\n  const meta = json.metadata || {};\n  const subNode = meta.subNodeExecutionData || {};\n  const prevRequests = subNode.metadata?.previousRequests || [];\n  const actions = subNode.actions || [];\n\n  const steps = [];\n\n  // Capture tool calls from previous requests\n  prevRequests.forEach((req, i) => {\n    const action = req.action || {};\n    steps.push({\n      step: i + 1,\n      phase: 'ACTION → OBSERVATION',\n      tool: action.tool || action.nodeName || 'unknown',\n      input: JSON.stringify(action.toolInput || action.input || {}),\n      output: Array.isArray(req.observation)\n        ? req.observation.map(o => o.text || JSON.stringify(o)).join(' ')\n        : String(req.observation || ''),\n      log: action.log || action.messageLog || ''\n    });\n  });\n\n  // Also pick up live actions\n  actions.forEach((a, i) => {\n    if (a.action?.type === 'ai_tool') {\n      steps.push({\n        step: prevRequests.length + i + 1,\n        phase: 'ACTION',\n        tool: a.action.nodeName,\n        input: JSON.stringify(a.action.input || {}),\n        output: 'Executing...',\n        log: ''\n      });\n    }\n  });\n\n  const formatted = steps.map(s =>\n    `━━━ STEP ${s.step}: ${s.phase} ━━━\\n` +\n    `  Tool    : ${s.tool}\\n` +\n    `  Input   : ${s.input}\\n` +\n    `  Output  : ${s.output.slice(0, 300)}${s.output.length > 300 ? '...' : ''}\\n` +\n    `  Thought : ${s.log.slice(0, 200)}${s.log.length > 200 ? '...' : ''}`\n  ).join('\\n\\n');\n\n  traces.push({\n    executionId: $execution?.id || 'unknown',\n    timestamp: new Date().toISOString(),\n    totalSteps: steps.length,\n    steps,\n    formattedTrace: formatted || 'No tool calls recorded in this execution.',\n    finalOutput: json.output || json\n  });\n}\n\nreturn [{ json: { traces, traceCount: traces.length, generatedAt: new Date().toISOString() } }];"
+      },
+      "id": "4847d324-5b85-4998-85d2-63e37a48fbf1",
+      "name": "Observability Trace Logger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Ticket Data — passes extracted fields to Trello\n// Fields are already structured by Extract Ticket Fields node\nconst item = $input.first().json;\nreturn [{\n  json: {\n    ticket_title:        item.ticket_title        || item.incident_summary || 'IT Incident',\n    ticket_description:  item.ticket_description  || 'No description',\n    severity:            item.severity             || 'medium',\n    assigned_team:       item.assigned_team        || 'IT Operations',\n    incident_summary:    item.incident_summary     || 'IT Incident',\n    root_cause:          item.root_cause           || '',\n    recommended_actions: item.recommended_actions  || '',\n    evidence_summary:    item.evidence_summary     || ''\n  }\n}];"
+      },
+      "id": "b013be20-c076-47fa-89dd-8002f24e96e9",
+      "name": "Format Ticket Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "listId": "69a8a039863e29b75943f3ba",
+        "name": "={{ $json.ticket_title }}",
+        "description": "={{ $json.ticket_description }}",
+        "additionalFields": {}
+      },
+      "id": "33b9ecff-2518-4cd4-aa6a-7cf8d46b113f",
+      "name": "Create Trello Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        992,
+        496
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "v0DfWIdkjNahllXx",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Extract Ticket Fields ────────────────────────────────────────────\n// Reads the agent's natural language output and extracts structured\n// fields for Trello. Replaces the broken outputParserStructured node.\n\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const raw = String(\n    item.json.output ||\n    item.json.text ||\n    item.json.response ||\n    item.json.message ||\n    JSON.stringify(item.json)\n  );\n\n  // ── Helper: extract line after a label emoji ─────────────────────\n  const extract = (pattern) => {\n    const m = raw.match(pattern);\n    return m ? m[1].trim() : null;\n  };\n\n  // ── Extract each field from the formatted agent output ───────────\n  const incident_summary = extract(/🔍 INCIDENT:\\s*(.+)/i)\n    || extract(/INCIDENT[:\\s]+(.+)/i)\n    || 'IT Incident';\n\n  // Severity: look for emoji label first, then fallback keyword scan\n  let severity = extract(/🎯 SEVERITY:\\s*(critical|high|medium|low)/i)\n    || extract(/SEVERITY[:\\s]+(critical|high|medium|low)/i);\n  if (!severity) {\n    if (/critical/i.test(raw))     severity = 'critical';\n    else if (/\\bhigh\\b/i.test(raw)) severity = 'high';\n    else if (/medium/i.test(raw))   severity = 'medium';\n    else                            severity = 'low';\n  }\n\n  // Team assignment\n  let assigned_team = extract(/👥 TEAM:\\s*(.+)/i)\n    || extract(/TEAM[:\\s]+(IT Operations|Network Team|SRE Team|Mail Admin)/i);\n  if (!assigned_team) {\n    if (/network team/i.test(raw))      assigned_team = 'Network Team';\n    else if (/sre team/i.test(raw))     assigned_team = 'SRE Team';\n    else if (/mail admin/i.test(raw))   assigned_team = 'Mail Admin';\n    else                                assigned_team = 'IT Operations';\n  }\n\n  // Root cause: text after ⚠️ ROOT CAUSE: up to next section\n  const root_cause = extract(/⚠️ ROOT CAUSE:\\s*(.+?)(?=\\n[✅👥🎯🎫]|\\n━|$)/s)\n    || extract(/ROOT CAUSE[:\\s]+(.+?)(?=\\n[A-Z✅]|$)/s)\n    || 'Under investigation';\n\n  // Recommended actions: numbered list after ✅ ACTIONS:\n  const actionsMatch = raw.match(/✅ ACTIONS:\\s*([\\s\\S]+?)(?=\\n👥|\\n🎯|\\n🎫|\\n━|$)/i);\n  const recommended_actions = actionsMatch\n    ? actionsMatch[1].trim()\n    : extract(/ACTIONS[:\\s]+([\\s\\S]+?)(?=\\n[A-Z👥🎯]|$)/i) || 'See agent response';\n\n  // Evidence: bullet list after 📋 EVIDENCE:\n  const evidenceMatch = raw.match(/📋 EVIDENCE:\\s*([\\s\\S]+?)(?=\\n📖|\\n⚠️|\\n✅|$)/i);\n  const evidence_summary = evidenceMatch\n    ? evidenceMatch[1].trim()\n    : 'See agent response for full evidence';\n\n  // Runbook reference\n  const runbook = extract(/📖 RUNBOOK:\\s*([\\s\\S]+?)(?=\\n⚠️|\\n✅|$)/i) || '';\n\n  const severityLabels = {\n    critical: '🔴 CRITICAL',\n    high:     '🟠 HIGH',\n    medium:   '🟡 MEDIUM',\n    low:      '🟢 LOW'\n  };\n\n  results.push({\n    json: {\n      // Fields for Trello\n      ticket_title:        incident_summary,\n      ticket_description:\n        `🔍 INCIDENT ANALYSIS\\n\\n` +\n        `⚠️ ROOT CAUSE:\\n${root_cause}\\n\\n` +\n        `📋 EVIDENCE:\\n${evidence_summary}\\n\\n` +\n        `📖 RUNBOOK REFERENCE:\\n${runbook}\\n\\n` +\n        `✅ RECOMMENDED ACTIONS:\\n${recommended_actions}\\n\\n` +\n        `👥 Team: ${assigned_team} | ${severityLabels[severity] || severity.toUpperCase()}\\n` +\n        `🤖 Auto-generated by Otic IT Support Agent`,\n      severity,\n      assigned_team,\n      incident_summary,\n      root_cause,\n      recommended_actions,\n      evidence_summary,\n      // Pass through raw output for observability\n      raw_agent_output: raw\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "9feb5c1d-e8c8-48f8-b5b5-88b97947b05b",
+      "name": "Extract Ticket Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "name": "runbook_search",
+        "description": "Search the IT runbook knowledge base for incident resolution procedures. Use this FIRST for every incident. Contains runbooks for: disk usage, slow website, VPN issues, service crashes, email problems, high CPU, network connectivity.",
+        "jsCode": "// ── Runbook Search Tool ─────────────────────────────────────────────\n// Self-contained RAG simulation with 7 embedded IT runbooks.\n// No vector store, no HTTP fetch, no external dependencies.\n// Performs keyword-based semantic search across all runbooks.\n\nconst query = String($fromAI('query', 'Search query describing the IT incident', 'string') || '').toLowerCase();\n\nconst RUNBOOKS = [\n  {\n    id: 'KB-001',\n    title: 'High Disk Usage Resolution',\n    keywords: ['disk','storage','space','full','partition','df','du','log','logrotate','docker','prune'],\n    team: 'IT Operations',\n    severity_trigger: 'high',\n    content: `RUNBOOK KB-001: HIGH DISK USAGE RESOLUTION\nTrigger: disk usage exceeds 90%\nDiagnosis steps:\n1. Run df -h to identify full partitions\n2. Check large log files: du -sh /var/log/*\n3. Find large files: find / -size +500M -type f\nRemediation:\n4. Clear Docker artifacts: docker system prune -af\n5. Rotate logs: logrotate -f /etc/logrotate.conf\n6. Remove old temp files: find /tmp -mtime +7 -delete\nEscalation: If disk exceeds 95%, escalate to senior SRE immediately\nTeam: IT Operations | Severity: high`\n  },\n  {\n    id: 'KB-002',\n    title: 'Slow Website / High Latency',\n    keywords: ['slow','website','latency','performance','nginx','http','response','timeout','502','503','upstream'],\n    team: 'SRE Team',\n    severity_trigger: 'high',\n    content: `RUNBOOK KB-002: SLOW WEBSITE / HIGH LATENCY\nTrigger: CPU above 80% or response time above 5 seconds\nDiagnosis steps:\n1. Check CPU and memory: top or htop\n2. Count active connections: netstat -an | grep ESTABLISHED | wc -l\n3. Review Nginx error logs: tail -100 /var/log/nginx/error.log\n4. Check database query times - long queries block responses\nRemediation:\n5. Test response time: curl -o /dev/null -s -w time_total https://site.com\n6. Scale horizontally if load balancer CPU exceeds 80%\n7. Restart nginx if needed: systemctl restart nginx\nTeam: SRE Team | Severity: high`\n  },\n  {\n    id: 'KB-003',\n    title: 'VPN Not Working',\n    keywords: ['vpn','connectivity','tunnel','network','openvpn','certificate','cert','tls','ssl','1194','wireguard'],\n    team: 'Network Team',\n    severity_trigger: 'critical',\n    content: `RUNBOOK KB-003: VPN NOT WORKING\nTrigger: VPN service down or certificate expired\nDiagnosis steps:\n1. Check VPN service: systemctl status openvpn\n2. Inspect firewall rules: iptables -L -n\n3. Confirm UDP port 1194 is open\n4. Check VPN logs: journalctl -u openvpn --since 1 hour ago\nRemediation:\n5. Verify certificate expiry: openssl x509 -in cert.pem -noout -dates\n6. Renew certificate if expired\n7. Restart service: systemctl restart openvpn\nTeam: Network Team | Severity: critical`\n  },\n  {\n    id: 'KB-004',\n    title: 'Service Restarting Repeatedly',\n    keywords: ['restart','crash','service','oom','memory','loop','systemd','kill','killed','heap','outofmemory','crashing','restarting'],\n    team: 'SRE Team',\n    severity_trigger: 'critical',\n    content: `RUNBOOK KB-004: SERVICE RESTARTING REPEATEDLY\nTrigger: more than 5 restarts in 24 hours (crash loop)\nDiagnosis steps:\n1. Check service status: systemctl status service-name\n2. Review crash logs: journalctl -xe -u service-name\n3. Check OOM kills: dmesg | grep -i oom\n4. Review memory limits: cat /etc/systemd/system/service-name.service\nRemediation:\n5. Increase memory allocation if OOM-killed (double current limit)\n6. Restart service after config change: systemctl daemon-reload && systemctl restart service-name\n7. Monitor for 30 minutes after fix\n8. Check application logs for uncaught exceptions\nTeam: SRE Team | Severity: critical`\n  },\n  {\n    id: 'KB-005',\n    title: 'Email Not Syncing',\n    keywords: ['email','sync','mail','smtp','imap','outlook','quota','mailbox','postfix','dovecot','relay'],\n    team: 'Mail Admin',\n    severity_trigger: 'medium',\n    content: `RUNBOOK KB-005: EMAIL NOT SYNCING\nTrigger: IMAP or SMTP failures or full mailbox quota\nDiagnosis steps:\n1. Test IMAP connectivity: telnet mail.server.com 993\n2. Check SMTP and IMAP ports are open in firewall\n3. Test SMTP relay: swaks --to user@domain.com --server mail.server.com\n4. Review mail server logs for authentication failures\nRemediation:\n5. Check SSL and TLS certificate validity: openssl s_client -connect mail.server.com:993\n6. Check user mailbox quota - full mailbox blocks sync\n7. Restart mail daemons: systemctl restart postfix dovecot\nTeam: Mail Admin | Severity: medium`\n  },\n  {\n    id: 'KB-006',\n    title: 'High CPU Usage',\n    keywords: ['cpu','high','load','performance','process','runaway','top','htop','spike','throttle'],\n    team: 'SRE Team',\n    severity_trigger: 'high',\n    content: `RUNBOOK KB-006: HIGH CPU USAGE\nTrigger: CPU usage above 90%\nDiagnosis steps:\n1. Identify CPU-intensive processes: top -b -n 1 | head -20\n2. Check for runaway processes: ps aux --sort=-%cpu | head -10\n3. Review recent deployments for performance regressions\nRemediation:\n4. Check for infinite loops in application code\n5. Adjust process priority: renice -n 10 -p PID\n6. Kill runaway process if needed: kill -9 PID\n7. Consider horizontal scaling if load is legitimate\nTeam: SRE Team | Severity: high`\n  },\n  {\n    id: 'KB-007',\n    title: 'Network Connectivity Issues',\n    keywords: ['network','connectivity','ping','dns','routing','firewall','port','unreachable','packet','loss'],\n    team: 'Network Team',\n    severity_trigger: 'high',\n    content: `RUNBOOK KB-007: NETWORK CONNECTIVITY ISSUES\nTrigger: service unreachable, DNS failure, port closed\nDiagnosis steps:\n1. Basic connectivity: ping -c 4 target-host\n2. DNS resolution: nslookup domain.com\n3. Port check: nc -zv host port\n4. Firewall rules: iptables -L -n -v\nRemediation:\n5. Check routing table: ip route show\n6. Fix firewall rules if blocking legitimate traffic\n7. Restart network services if needed: systemctl restart networking\nTeam: Network Team | Severity: high`\n  }\n];\n\n// Score each runbook by keyword matches against the query\nconst scored = RUNBOOKS.map(rb => {\n  const matchCount = rb.keywords.filter(kw => query.includes(kw)).length;\n  // Also check if title words appear in query\n  const titleWords = rb.title.toLowerCase().split(/\\s+/);\n  const titleMatch = titleWords.filter(w => w.length > 3 && query.includes(w)).length;\n  return { ...rb, score: matchCount + (titleMatch * 2) };\n}).filter(rb => rb.score > 0)\n  .sort((a, b) => b.score - a.score);\n\nif (scored.length === 0) {\n  return JSON.stringify({\n    found: false,\n    query,\n    message: 'No matching runbook found. Use general IT troubleshooting: check logs, service status, and resource usage.',\n    suggestion: 'Try searching with specific terms like: disk, vpn, crash, email, nginx, memory'\n  });\n}\n\nconst top = scored.slice(0, 2);\nreturn JSON.stringify({\n  found: true,\n  query,\n  matchCount: top.length,\n  results: top.map(rb => ({\n    id: rb.id,\n    title: rb.title,\n    relevanceScore: rb.score,\n    team: rb.team,\n    severity_trigger: rb.severity_trigger,\n    content: rb.content\n  }))\n});"
+      },
+      "id": "b3486ec5-5e3a-41e4-9ac1-ec44f641958b",
+      "name": "Runbook Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        624
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Safety Layer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safety Layer": {
+      "main": [
+        [
+          {
+            "node": "Safe or Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe or Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Return Block Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Server Metrics Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Check Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Ticket Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IT Support Agent": {
+      "main": [
+        [
+          {
+            "node": "Observability Trace Logger",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Ticket Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Ticket Data": {
+      "main": [
+        [
+          {
+            "node": "Create Trello Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Ticket Fields": {
+      "main": [
+        [
+          {
+            "node": "Format Ticket Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Runbook Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "IT Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "36dccd7c-d77e-441a-83a8-0e576740e8e2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e5e7dfefea878d747706faa2f1816f2969ec629cf7e96f06f6d31a73c6593ac7"
+  },
+  "id": "h6ERKipSbr9ZIpOS",
+  "tags": []
+}

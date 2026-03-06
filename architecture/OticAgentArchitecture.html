@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Otic IT Support Agent — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #060b14;
+    --surface:  #0c1520;
+    --s2:       #111d2e;
+    --s3:       #162538;
+    --border:   #1a2d45;
+    --b2:       #1e3550;
+    --accent:   #00d4ff;
+    --blue:     #0066ff;
+    --green:    #00e57a;
+    --orange:   #ff9500;
+    --red:      #ff3b5c;
+    --purple:   #9b59ff;
+    --text:     #e8f4ff;
+    --muted:    #4a6b8a;
+    --muted2:   #2a4560;
+    --head:     'Syne', sans-serif;
+    --mono:     'JetBrains Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    padding: 72px 60px 56px;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .hero-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .hero-glow {
+    position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+    width: 700px; height: 300px;
+    background: radial-gradient(ellipse, rgba(0,102,255,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-inner { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; }
+  .hero-tag {
+    display: inline-block; margin-bottom: 18px;
+    padding: 4px 14px; border-radius: 20px;
+    border: 1px solid rgba(0,212,255,0.25);
+    background: rgba(0,212,255,0.06);
+    color: var(--accent); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .hero-title {
+    font-family: var(--head); font-size: 52px; font-weight: 800;
+    line-height: 1.05; color: var(--text);
+    margin-bottom: 10px;
+  }
+  .hero-title span { color: var(--accent); }
+  .hero-sub {
+    font-size: 14px; color: var(--muted); max-width: 560px;
+    margin-bottom: 32px; line-height: 1.7;
+  }
+  .hero-badges { display: flex; gap: 10px; flex-wrap: wrap; }
+  .hero-badge {
+    padding: 5px 14px; border-radius: 6px; font-size: 10px;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 1px solid;
+  }
+  .b-blue   { background: rgba(0,102,255,0.1);  color: #6699ff; border-color: rgba(0,102,255,0.25); }
+  .b-green  { background: rgba(0,229,122,0.08); color: var(--green);  border-color: rgba(0,229,122,0.2); }
+  .b-orange { background: rgba(255,149,0,0.08); color: var(--orange); border-color: rgba(255,149,0,0.2); }
+  .b-purple { background: rgba(155,89,255,0.1); color: #bb88ff; border-color: rgba(155,89,255,0.25); }
+  .b-red    { background: rgba(255,59,92,0.08); color: #ff7090; border-color: rgba(255,59,92,0.2); }
+  .b-cyan   { background: rgba(0,212,255,0.08); color: var(--accent); border-color: rgba(0,212,255,0.2); }
+
+  /* ── LAYOUT ── */
+  .page { max-width: 1100px; margin: 0 auto; padding: 0 48px 80px; }
+
+  .section { margin-top: 64px; }
+  .section-label {
+    font-size: 10px; color: var(--muted); letter-spacing: 0.2em;
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .section-title {
+    font-family: var(--head); font-size: 28px; font-weight: 700;
+    color: var(--text); margin-bottom: 24px;
+  }
+  .section-title span { color: var(--accent); }
+
+  /* ── ARCHITECTURE DIAGRAM ── */
+  .arch-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .arch-diagram::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  /* Flow rows */
+  .flow-row {
+    display: flex; align-items: center;
+    gap: 0; margin-bottom: 0;
+  }
+  .flow-col {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0;
+  }
+
+  /* Node boxes */
+  .node {
+    border-radius: 10px; padding: 12px 18px;
+    border: 1px solid; font-size: 11px;
+    display: flex; flex-direction: column; gap: 3px;
+    text-align: center; position: relative;
+    min-width: 120px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: default;
+  }
+  .node:hover { transform: translateY(-2px); }
+  .node-icon { font-size: 18px; margin-bottom: 3px; }
+  .node-name { font-weight: 600; font-size: 11px; }
+  .node-type { font-size: 9px; opacity: 0.65; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 1px; }
+
+  .node-trigger { background: rgba(0,212,255,0.08); border-color: rgba(0,212,255,0.3); color: var(--accent); }
+  .node-safety  { background: rgba(255,59,92,0.08);  border-color: rgba(255,59,92,0.3);  color: #ff7090; }
+  .node-agent   { background: rgba(0,102,255,0.12);  border-color: rgba(0,102,255,0.4);  color: #88aaff;
+    padding: 16px 24px; min-width: 150px; box-shadow: 0 0 30px rgba(0,102,255,0.15); }
+  .node-tool    { background: rgba(0,229,122,0.07);  border-color: rgba(0,229,122,0.25); color: #66ffaa; min-width: 130px; }
+  .node-memory  { background: rgba(155,89,255,0.1);  border-color: rgba(155,89,255,0.3); color: #cc99ff; }
+  .node-llm     { background: rgba(255,149,0,0.08);  border-color: rgba(255,149,0,0.25); color: var(--orange); }
+  .node-obs     { background: rgba(0,212,255,0.05);  border-color: rgba(0,212,255,0.15); color: var(--muted); }
+  .node-trello  { background: rgba(0,102,255,0.07);  border-color: rgba(0,102,255,0.2);  color: #99bbff; }
+  .node-block   { background: rgba(255,59,92,0.05);  border-color: rgba(255,59,92,0.15); color: var(--muted); }
+
+  /* Arrows */
+  .arrow { color: var(--muted2); font-size: 16px; padding: 0 8px; flex-shrink: 0; line-height: 1; }
+  .arrow-down { text-align: center; color: var(--muted2); font-size: 16px; line-height: 1; padding: 5px 0; }
+  .arrow-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 1px; }
+
+  /* Diagram grid */
+  .diag-top { display: flex; justify-content: center; margin-bottom: 6px; }
+  .diag-mid {
+    display: flex; justify-content: center; align-items: flex-start;
+    gap: 6px; margin-bottom: 6px;
+  }
+  .diag-col-center { display: flex; flex-direction: column; align-items: center; }
+  .diag-col-side   { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 80px; }
+  .diag-tools-col  { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .diag-bottom { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin-top: 16px; }
+
+  .fork-container {
+    display: flex; align-items: flex-start; gap: 30px; margin-top: 4px;
+  }
+  .fork-branch { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .fork-label { font-size: 9px; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .fork-safe    { background: rgba(0,229,122,0.12); color: var(--green); }
+  .fork-blocked { background: rgba(255,59,92,0.12); color: var(--red); }
+
+  .tools-group {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .tools-group-label {
+    font-size: 9px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.12em; margin-bottom: 2px;
+  }
+
+  .h-connector {
+    border-top: 1px dashed var(--muted2);
+    width: 40px; align-self: center; flex-shrink: 0;
+  }
+
+  /* Connector lines for tools */
+  .tools-and-agent {
+    display: flex; align-items: center; gap: 0;
+  }
+  .tools-bracket {
+    display: flex; flex-direction: column; gap: 8px;
+    align-items: flex-end;
+  }
+  .bracket-line {
+    display: flex; align-items: center;
+  }
+  .dot-connector {
+    width: 30px; height: 1px;
+    border-top: 1px dashed var(--muted2);
+  }
+  .v-line {
+    width: 1px; background: var(--muted2);
+    align-self: stretch; min-height: 20px; margin: 0 auto;
+  }
+
+  /* Observability + Trello row */
+  .post-agent { display: flex; justify-content: center; gap: 60px; margin-top: 0; }
+
+  /* ── LOOP DIAGRAM ── */
+  .loop-diagram {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+    background: var(--border); border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .loop-cell {
+    padding: 24px 28px;
+    position: relative;
+  }
+  .loop-cell-1 { background: rgba(0,212,255,0.06);  }
+  .loop-cell-2 { background: rgba(0,102,255,0.06);  }
+  .loop-cell-3 { background: rgba(0,229,122,0.05);  }
+  .loop-cell-4 { background: rgba(155,89,255,0.06); }
+  .loop-num {
+    font-family: var(--head); font-size: 40px; font-weight: 800;
+    opacity: 0.12; position: absolute; top: 10px; right: 16px;
+    line-height: 1;
+  }
+  .loop-icon  { font-size: 22px; margin-bottom: 8px; }
+  .loop-phase {
+    font-family: var(--head); font-size: 16px; font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .loop-desc  { font-size: 12px; color: var(--muted); line-height: 1.65; }
+  .loop-tags  { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .loop-tag   {
+    padding: 2px 8px; border-radius: 4px; font-size: 9px;
+    text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+  }
+  .lt-cyan   { background: rgba(0,212,255,0.1);  color: var(--accent); }
+  .lt-blue   { background: rgba(0,102,255,0.12); color: #88aaff; }
+  .lt-green  { background: rgba(0,229,122,0.1);  color: var(--green); }
+  .lt-purple { background: rgba(155,89,255,0.12); color: #cc99ff; }
+
+  /* ── TOOLS TABLE ── */
+  .tools-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .tools-grid { grid-template-columns: 1fr; } }
+  .tool-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; position: relative; overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .tool-card:hover { border-color: var(--b2); transform: translateY(-2px); }
+  .tool-card::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .tc-green::after  { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+  .tc-blue::after   { background: linear-gradient(90deg, transparent, var(--blue), transparent); }
+  .tc-orange::after { background: linear-gradient(90deg, transparent, var(--orange), transparent); }
+  .tc-cyan::after   { background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .tc-purple::after { background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .tool-card-icon   { font-size: 24px; margin-bottom: 10px; }
+  .tool-card-name   { font-family: var(--head); font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .tool-card-id     { font-size: 10px; color: var(--muted); margin-bottom: 10px; letter-spacing: 0.08em; }
+  .tool-card-desc   { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .tool-card-params { margin-top: 12px; }
+  .tool-param {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin-bottom: 4px; font-size: 11px;
+  }
+  .tool-param-name  { color: var(--accent); font-size: 10px; min-width: 90px; flex-shrink: 0; font-weight: 500; }
+  .tool-param-desc  { color: var(--muted); }
+
+  /* ── SAFETY ── */
+  .safety-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .safety-grid { grid-template-columns: 1fr; } }
+  .safety-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px;
+  }
+  .safety-card-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  }
+  .safety-card-icon { font-size: 20px; }
+  .safety-card-name { font-family: var(--head); font-size: 14px; font-weight: 700; }
+  .safety-list { list-style: none; }
+  .safety-list li {
+    padding: 6px 0; font-size: 12px; color: var(--muted);
+    border-bottom: 1px solid var(--border); line-height: 1.5;
+  }
+  .safety-list li:last-child { border-bottom: none; }
+  .safety-list li::before { content: '→ '; color: var(--red); font-weight: 600; }
+  .code-snippet {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; margin-top: 10px;
+    font-size: 11px; color: #88c0ff; line-height: 1.7;
+    overflow-x: auto;
+  }
+  .code-kw  { color: #ff9500; }
+  .code-str { color: #00e57a; }
+  .code-cm  { color: var(--muted); }
+
+  /* ── OBSERVABILITY ── */
+  .obs-trace {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; font-size: 11px;
+  }
+  .trace-row {
+    display: flex; gap: 16px; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .trace-row:last-child { border-bottom: none; }
+  .trace-step {
+    min-width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+    background: var(--s2); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .trace-step.active { background: rgba(0,212,255,0.1); border-color: var(--accent); color: var(--accent); }
+  .trace-phase { font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; min-width: 160px; flex-shrink: 0; }
+  .trace-content { flex: 1; color: var(--text); }
+  .trace-tool { color: var(--green); font-weight: 600; }
+  .trace-result { color: var(--muted); margin-top: 2px; }
+
+  /* ── MEMORY ── */
+  .mem-diagram {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  @media (max-width: 640px) { .mem-diagram { grid-template-columns: 1fr; } }
+  .mem-block { }
+  .mem-block-title {
+    font-family: var(--head); font-size: 13px; font-weight: 700;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .mem-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .mem-item {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+    padding: 8px 12px; margin-bottom: 6px; font-size: 11px;
+  }
+  .mem-item-key   { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .mem-item-value { color: var(--text); margin-top: 1px; }
+
+  /* ── TRADEOFFS ── */
+  .tradeoff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .tradeoff-grid { grid-template-columns: 1fr; } }
+  .tradeoff-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .tradeoff-title { font-family: var(--head); font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+  .tradeoff-row   { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .tradeoff-icon  { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── FOOTER ── */
+  .footer {
+    border-top: 1px solid var(--border); padding: 24px 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; color: var(--muted); max-width: 1100px; margin: 0 auto;
+  }
+
+  /* Divider */
+  .divider {
+    border: none; border-top: 1px solid var(--border);
+    margin: 48px 0 0;
+  }
+
+  /* Scroll nav */
+  .nav-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(6,11,20,0.92); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 48px;
+    display: flex; gap: 4px; align-items: center;
+    height: 44px;
+  }
+  .nav-link {
+    padding: 5px 12px; border-radius: 6px;
+    font-size: 11px; color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s;
+  }
+  .nav-link:hover { color: var(--text); background: var(--s2); }
+  .nav-sep { color: var(--muted2); padding: 0 2px; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-inner">
+    <div class="hero-tag">Otic Agentic AI Internship · Architecture Document</div>
+    <h1 class="hero-title">IT Support <span>Agent</span><br>Architecture</h1>
+    <p class="hero-sub">
+      A multi-step Agentic AI system built on n8n with a Vite/React UI.
+      Implements Thought → Action → Observation → Reflection loop with
+      5 tools, safety guardrails, RAG grounding, memory, and full observability.
+    </p>
+    <div class="hero-badges">
+      <span class="hero-badge b-blue">n8n Workflow</span>
+      <span class="hero-badge b-cyan">OpenAI GPT-4o</span>
+      <span class="hero-badge b-green">5 Tools</span>
+      <span class="hero-badge b-purple">Memory Buffer</span>
+      <span class="hero-badge b-red">Safety Layer</span>
+      <span class="hero-badge b-orange">Trello Integration</span>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav-bar">
+  <a class="nav-link" href="#arch">Architecture</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#loop">Agent Loop</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#tools">Tools</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#rag">RAG / Memory</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#safety">Safety</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#obs">Observability</a>
+  <span class="nav-sep">·</span>
+  <a class="nav-link" href="#tradeoffs">Trade-offs</a>
+</nav>
+
+<div class="page">
+
+  <!-- ══ ARCHITECTURE DIAGRAM ══ -->
+  <div class="section" id="arch">
+    <div class="section-label">System Overview</div>
+    <div class="section-title">Overall <span>Architecture</span></div>
+
+    <div class="arch-diagram">
+
+      <!-- Layer 1: Entry -->
+      <div style="display:flex;justify-content:center;margin-bottom:6px;">
+        <div class="node node-trigger">
+          <div class="node-icon">🌐</div>
+          <div class="node-name">React UI (Vite)</div>
+          <div class="node-type">User Interface · Local</div>
+        </div>
+      </div>
+      <div class="arrow-down">↓<div class="arrow-label">HTTP POST /chat (sessionId + chatInput)</div></div>
+
+      <div style="display:flex;justify-content:center;margin-bottom:6px;">
+        <div class="node node-trigger">
+          <div class="node-icon">🔗</div>
+          <div class="node-name">Chat Trigger</div>
+          <div class="node-type">n8n Webhook · Entry point</div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- Layer 2: Safety -->
+      <div style="display:flex;justify-content:center;margin-bottom:6px;">
+        <div class="node node-safety" style="min-width:160px;">
+          <div class="node-icon">🛡️</div>
+          <div class="node-name">Safety Layer</div>
+          <div class="node-type">Prompt injection detection</div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- Fork -->
+      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+        <div style="display:flex;align-items:flex-start;gap:60px;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <span class="fork-label fork-blocked">🚫 Blocked</span>
+            <div class="node node-block" style="min-width:130px;">
+              <div class="node-icon">⛔</div>
+              <div class="node-name">Return Block Message</div>
+              <div class="node-type">Safe refusal</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <span class="fork-label fork-safe">✅ Safe</span>
+            <!-- Core agent + tools -->
+            <div style="display:flex;align-items:center;gap:12px;">
+              <!-- Tools left -->
+              <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+                <div class="node node-tool" style="min-width:145px;">
+                  <div class="node-icon">📖</div>
+                  <div class="node-name">Runbook Search</div>
+                  <div class="node-type">RAG · KB-001..007</div>
+                </div>
+                <div class="node node-tool" style="min-width:145px;">
+                  <div class="node-icon">📋</div>
+                  <div class="node-name">Log Search</div>
+                  <div class="node-type">Simulated log DB</div>
+                </div>
+                <div class="node node-tool" style="min-width:145px;">
+                  <div class="node-icon">📊</div>
+                  <div class="node-name">Server Metrics</div>
+                  <div class="node-type">CPU / RAM / Disk</div>
+                </div>
+                <div class="node node-tool" style="min-width:145px;">
+                  <div class="node-icon">🔍</div>
+                  <div class="node-name">Status Check</div>
+                  <div class="node-type">Service health</div>
+                </div>
+                <div class="node node-tool" style="min-width:145px;">
+                  <div class="node-icon">🎫</div>
+                  <div class="node-name">Create Ticket</div>
+                  <div class="node-type">INC-XXXX + Trello</div>
+                </div>
+              </div>
+              <!-- Dashed lines to agent -->
+              <div style="display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;">
+                <div style="width:40px;border-top:1px dashed var(--muted2);"></div>
+                <div style="width:40px;border-top:1px dashed var(--muted2);"></div>
+                <div style="width:40px;border-top:1px dashed var(--muted2);"></div>
+                <div style="width:40px;border-top:1px dashed var(--muted2);"></div>
+                <div style="width:40px;border-top:1px dashed var(--muted2);"></div>
+              </div>
+              <!-- Agent center -->
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                <div class="node node-agent">
+                  <div class="node-icon">🤖</div>
+                  <div class="node-name">IT Support Agent</div>
+                  <div class="node-type">LangChain ReAct · n8n</div>
+                </div>
+                <!-- Memory + LLM below agent -->
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                  <div class="node node-memory">
+                    <div class="node-icon">🧠</div>
+                    <div class="node-name">Memory Buffer</div>
+                    <div class="node-type">Window · 5 turns</div>
+                  </div>
+                  <div class="node node-llm">
+                    <div class="node-icon">✨</div>
+                    <div class="node-name">GPT-4o</div>
+                    <div class="node-type">OpenAI LLM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-down" style="margin-top:8px;">↓</div>
+
+      <!-- Post-agent -->
+      <div style="display:flex;justify-content:center;gap:40px;margin-top:6px;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+          <div class="node node-obs" style="min-width:150px;">
+            <div class="node-icon">🔭</div>
+            <div class="node-name">Observability Logger</div>
+            <div class="node-type">Trace · steps · tools</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="node node-obs" style="min-width:140px;">
+              <div class="node-icon">🔎</div>
+              <div class="node-name">Extract Ticket Fields</div>
+              <div class="node-type">NLP field parser</div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="node node-obs" style="min-width:120px;">
+              <div class="node-icon">🗂️</div>
+              <div class="node-name">Format Ticket</div>
+              <div class="node-type">Struct → Trello</div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="node node-trello" style="min-width:110px;">
+              <div class="node-icon">📌</div>
+              <div class="node-name">Trello Card</div>
+              <div class="node-type">Live integration</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /arch-diagram -->
+  </div>
+
+  <!-- ══ AGENT LOOP ══ -->
+  <div class="section" id="loop">
+    <div class="section-label">Core Architecture</div>
+    <div class="section-title">Agent <span>Reasoning Loop</span></div>
+
+    <div class="loop-diagram">
+      <div class="loop-cell loop-cell-1">
+        <div class="loop-num">1</div>
+        <div class="loop-icon">💭</div>
+        <div class="loop-phase" style="color:var(--accent);">THOUGHT</div>
+        <div class="loop-desc">
+          The agent receives the incident description and forms an internal reasoning plan. It identifies what type of incident this is, which tools are relevant, and what information it needs to gather before recommending any action.
+        </div>
+        <div class="loop-tags">
+          <span class="loop-tag lt-cyan">Incident classification</span>
+          <span class="loop-tag lt-cyan">Tool planning</span>
+        </div>
+      </div>
+      <div class="loop-cell loop-cell-2">
+        <div class="loop-num">2</div>
+        <div class="loop-icon">⚙️</div>
+        <div class="loop-phase" style="color:#88aaff;">ACTION</div>
+        <div class="loop-desc">
+          The agent selects and calls the most appropriate tool — always starting with <strong>Runbook Search</strong> to ground its response in known procedures. It then calls Log Search, Server Metrics, or Status Check based on what the runbook suggests or what the incident requires.
+        </div>
+        <div class="loop-tags">
+          <span class="loop-tag lt-blue">Tool selection</span>
+          <span class="loop-tag lt-blue">Parameterised calls</span>
+        </div>
+      </div>
+      <div class="loop-cell loop-cell-3">
+        <div class="loop-num">3</div>
+        <div class="loop-icon">👁️</div>
+        <div class="loop-phase" style="color:var(--green);">OBSERVATION</div>
+        <div class="loop-desc">
+          Tool outputs are returned as structured JSON and fed back into the agent context. The agent reads the evidence — log errors, metric values, service states — and incorporates it into its understanding of the incident. Multiple rounds of tool use may occur before enough evidence is gathered.
+        </div>
+        <div class="loop-tags">
+          <span class="loop-tag lt-green">Evidence gathering</span>
+          <span class="loop-tag lt-green">Grounding</span>
+        </div>
+      </div>
+      <div class="loop-cell loop-cell-4">
+        <div class="loop-num">4</div>
+        <div class="loop-icon">🔄</div>
+        <div class="loop-phase" style="color:#cc99ff;">REFLECTION</div>
+        <div class="loop-desc">
+          Using all gathered observations, the agent produces a structured diagnostic output: incident type, root cause (evidence-backed), recommended remediation steps sourced from the runbook, and severity. It then calls <strong>Create Ticket</strong> to formally log the incident, which flows to Trello.
+        </div>
+        <div class="loop-tags">
+          <span class="loop-tag lt-purple">Root cause analysis</span>
+          <span class="loop-tag lt-purple">Runbook citation</span>
+          <span class="loop-tag lt-purple">Ticket creation</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TOOLS ══ -->
+  <div class="section" id="tools">
+    <div class="section-label">Tool Orchestration</div>
+    <div class="section-title">Integrated <span>Tools</span></div>
+
+    <div class="tools-grid">
+
+      <div class="tool-card tc-green">
+        <div class="tool-card-icon">📖</div>
+        <div class="tool-card-name">Runbook Search</div>
+        <div class="tool-card-id">RAG · KB-001 through KB-007</div>
+        <div class="tool-card-desc">
+          Keyword-based semantic search across 7 embedded IT runbooks covering disk, VPN, app crashes, web performance, email sync, and more. Called first on every incident to ground the agent in documented procedures and avoid hallucination.
+        </div>
+        <div class="tool-card-params">
+          <div class="tool-param">
+            <span class="tool-param-name">query</span>
+            <span class="tool-param-desc">Natural language description of the incident</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tool-card tc-blue">
+        <div class="tool-card-icon">📋</div>
+        <div class="tool-card-name">Log Search</div>
+        <div class="tool-card-id">Simulated log database</div>
+        <div class="tool-card-desc">
+          Returns timestamped log entries for 5 servers (nginx, vpn, app, mail, disk). Supports filtering by service, log level (ERROR/WARN/INFO), and time range. Surfaces OOMKilled, crash loops, connection failures, and sync errors.
+        </div>
+        <div class="tool-card-params">
+          <div class="tool-param"><span class="tool-param-name">service</span><span class="tool-param-desc">nginx · vpn · app · mail · disk</span></div>
+          <div class="tool-param"><span class="tool-param-name">level</span><span class="tool-param-desc">ERROR · WARN · INFO · all</span></div>
+          <div class="tool-param"><span class="tool-param-name">since</span><span class="tool-param-desc">1h · 6h · 24h</span></div>
+        </div>
+      </div>
+
+      <div class="tool-card tc-orange">
+        <div class="tool-card-icon">📊</div>
+        <div class="tool-card-name">Server Metrics</div>
+        <div class="tool-card-id">5 simulated servers</div>
+        <div class="tool-card-desc">
+          Returns CPU %, memory %, disk %, uptime, load average, and overall status (healthy / degraded / critical / down) for web-01, db-01, vpn-01, mail-01, app-01. Enables quantitative evidence in the agent's diagnosis.
+        </div>
+        <div class="tool-card-params">
+          <div class="tool-param"><span class="tool-param-name">server</span><span class="tool-param-desc">web-01 · db-01 · vpn-01 · mail-01 · app-01</span></div>
+        </div>
+      </div>
+
+      <div class="tool-card tc-cyan">
+        <div class="tool-card-icon">🔍</div>
+        <div class="tool-card-name">Status Check</div>
+        <div class="tool-card-id">Service health states</div>
+        <div class="tool-card-desc">
+          Returns live service state including PID, port, uptime, restart count (24h), last restart time, and health check result. Surfaces restarting / degraded / down states and maps them to the correct server and service pair.
+        </div>
+        <div class="tool-card-params">
+          <div class="tool-param"><span class="tool-param-name">service</span><span class="tool-param-desc">nginx · vpn · app · mail · database</span></div>
+          <div class="tool-param"><span class="tool-param-name">server</span><span class="tool-param-desc">optional target server</span></div>
+        </div>
+      </div>
+
+      <div class="tool-card tc-purple" style="grid-column: span 2;">
+        <div class="tool-card-icon">🎫</div>
+        <div class="tool-card-name">Create Ticket</div>
+        <div class="tool-card-id">INC-XXXX · Trello integration</div>
+        <div class="tool-card-desc">
+          Creates a structured incident ticket with a unique ID (INC-XXXX), severity-based SLA target, full diagnostic description, and assigned team. The ticket then flows downstream through Extract Ticket Fields → Format Ticket Data → Create Trello Card, creating a real card on a Trello board for tracking.
+        </div>
+        <div class="tool-card-params" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div class="tool-param"><span class="tool-param-name">title</span><span class="tool-param-desc">Short incident title</span></div>
+          <div class="tool-param"><span class="tool-param-name">severity</span><span class="tool-param-desc">low · medium · high · critical</span></div>
+          <div class="tool-param"><span class="tool-param-name">description</span><span class="tool-param-desc">Full diagnostic summary with evidence</span></div>
+          <div class="tool-param"><span class="tool-param-name">assigned_team</span><span class="tool-param-desc">IT Ops · Network · SRE · Mail Admin</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ RAG & MEMORY ══ -->
+  <div class="section" id="rag">
+    <div class="section-label">Retrieval & Memory</div>
+    <div class="section-title">RAG Pipeline &amp; <span>Context</span></div>
+
+    <div class="mem-diagram">
+      <div class="mem-block">
+        <div class="mem-block-title">
+          <div class="mem-dot" style="background:var(--green);"></div>
+          RAG — Runbook Grounding
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Approach</div>
+          <div class="mem-item-value">Keyword-based semantic search across 7 embedded runbooks. No external vector store — fully self-contained inside the n8n Code node.</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Runbooks</div>
+          <div class="mem-item-value">KB-001 Disk · KB-002 VPN · KB-003 App Crash Loop · KB-004 Web Perf · KB-005 Email · KB-006 DB · KB-007 Security</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Grounding rule</div>
+          <div class="mem-item-value">Agent always calls Runbook Search before any remediation recommendation. Citations are included in the output (e.g. "per KB-003, step 4...").</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Hallucination prevention</div>
+          <div class="mem-item-value">System prompt explicitly instructs: "Do not recommend actions not covered in the retrieved runbook." If no runbook matches, the agent escalates instead of guessing.</div>
+        </div>
+      </div>
+
+      <div class="mem-block">
+        <div class="mem-block-title">
+          <div class="mem-dot" style="background:var(--purple);"></div>
+          Memory — Conversation Buffer
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Type</div>
+          <div class="mem-item-value">Window Buffer Memory — retains the last 5 conversation turns (configurable), attached to the LangChain agent node.</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Session scoping</div>
+          <div class="mem-item-value">Each session uses a unique sessionId generated in the React UI (UUID). Memory is scoped to that session, so parallel users stay isolated.</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">What is stored</div>
+          <div class="mem-item-value">User messages and agent responses. Tool call inputs/outputs are not persisted in memory between turns — only the final response.</div>
+        </div>
+        <div class="mem-item">
+          <div class="mem-item-key">Sensitive data policy</div>
+          <div class="mem-item-value">Credentials, tokens, and PII are never stored. Memory is ephemeral (in-process). No disk or database persistence.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SAFETY ══ -->
+  <div class="section" id="safety">
+    <div class="section-label">Safety Architecture</div>
+    <div class="section-title">Safety <span>Controls</span></div>
+
+    <div class="safety-grid">
+      <div class="safety-card">
+        <div class="safety-card-head">
+          <span class="safety-card-icon">🛡️</span>
+          <span class="safety-card-name">Prompt Injection Detection</span>
+        </div>
+        <ul class="safety-list">
+          <li>Regex-based pattern matching on all incoming messages before they reach the agent</li>
+          <li>Detects: "ignore previous instructions", "act as unrestricted", "reveal system prompt", "delete all tickets", "bypass safety"</li>
+          <li>Blocked inputs return a canned refusal message and <strong>never</strong> reach the LLM</li>
+          <li>Block reason is logged for observability</li>
+        </ul>
+        <div class="code-snippet">
+<span class="code-cm">// Sample injection patterns</span><br>
+<span class="code-kw">const</span> PATTERNS = [<br>
+&nbsp;&nbsp;/ignore (previous|all) instructions/i,<br>
+&nbsp;&nbsp;/reveal (your )?(system prompt)/i,<br>
+&nbsp;&nbsp;/delete all (tickets|data)/i,<br>
+&nbsp;&nbsp;/bypass (safety|restrictions)/i<br>
+];
+        </div>
+      </div>
+
+      <div class="safety-card">
+        <div class="safety-card-head">
+          <span class="safety-card-icon">🔒</span>
+          <span class="safety-card-name">Role-Based Access</span>
+        </div>
+        <ul class="safety-list">
+          <li><strong>Admin</strong> — Full access including config and webhook URL management</li>
+          <li><strong>IT Agent</strong> — Chat, history, create tickets</li>
+          <li><strong>Viewer</strong> — Read-only chat access, cannot modify config</li>
+          <li>Role is enforced in the React UI; all users must authenticate before reaching the webhook</li>
+        </ul>
+      </div>
+
+      <div class="safety-card">
+        <div class="safety-card-head">
+          <span class="safety-card-icon">🚫</span>
+          <span class="safety-card-name">Tool Misuse Prevention</span>
+        </div>
+        <ul class="safety-list">
+          <li><strong>Create Ticket</strong> is only called by the agent after a complete diagnosis — not speculatively</li>
+          <li>Severity is agent-inferred from evidence, not user-supplied directly</li>
+          <li>Assigned team is restricted to a whitelist of 4 known teams</li>
+          <li>No destructive tool actions exist (read-only metrics, logs, status)</li>
+        </ul>
+      </div>
+
+      <div class="safety-card">
+        <div class="safety-card-head">
+          <span class="safety-card-icon">🔐</span>
+          <span class="safety-card-name">Sensitive Data Protection</span>
+        </div>
+        <ul class="safety-list">
+          <li>No credentials are stored in memory or tickets</li>
+          <li>n8n credentials (OpenAI key, Trello token) stored in n8n's encrypted credential vault — never in code</li>
+          <li>Demo credentials in the UI are clearly marked and would be replaced by SSO in production</li>
+          <li>No PII is logged in the observability trace</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ OBSERVABILITY ══ -->
+  <div class="section" id="obs">
+    <div class="section-label">Observability</div>
+    <div class="section-title">Trace &amp; <span>Observability</span></div>
+
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.7;">
+      The <strong>Observability Trace Logger</strong> node runs in parallel after the agent completes. It captures
+      tool calls, inputs, outputs, reasoning steps, and decision transitions — making the agent's reasoning
+      fully visible and non-black-box.
+    </p>
+
+    <div class="obs-trace">
+      <div class="trace-row">
+        <div class="trace-step active">1</div>
+        <div class="trace-phase">THOUGHT</div>
+        <div class="trace-content">
+          Incident classified as <strong>"App service restarting repeatedly"</strong>. Relevant tools: runbook_search, log_search (app), server_metrics (app-01), status_check (app).
+        </div>
+      </div>
+      <div class="trace-row">
+        <div class="trace-step active">2</div>
+        <div class="trace-phase">ACTION → OBSERVATION</div>
+        <div class="trace-content">
+          <span class="trace-tool">runbook_search</span>({ query: "service restarting crash loop memory" })<br>
+          <span class="trace-result">→ KB-003 matched: App Crash Loop Recovery. Trigger: restarts &gt; 5 in 1h. Diagnosis: check memory OOM, container limits, heap config.</span>
+        </div>
+      </div>
+      <div class="trace-row">
+        <div class="trace-step active">3</div>
+        <div class="trace-phase">ACTION → OBSERVATION</div>
+        <div class="trace-content">
+          <span class="trace-tool">server_metrics</span>({ server: "app-01" })<br>
+          <span class="trace-result">→ CPU: 95%, Memory: 99%, Disk: 62%, Status: CRITICAL, Uptime: 12 minutes</span>
+        </div>
+      </div>
+      <div class="trace-row">
+        <div class="trace-step active">4</div>
+        <div class="trace-phase">ACTION → OBSERVATION</div>
+        <div class="trace-content">
+          <span class="trace-tool">log_search</span>({ service: "app", level: "ERROR", since: "1h" })<br>
+          <span class="trace-result">→ [10:45:23] OOMKilled: container exceeded 2Gi · [10:45:20] OutOfMemoryError: Java heap space · [10:45:10] Service restarting (attempt 7 of 10)</span>
+        </div>
+      </div>
+      <div class="trace-row">
+        <div class="trace-step active">5</div>
+        <div class="trace-phase">REFLECTION → ACTION</div>
+        <div class="trace-content">
+          Root cause confirmed: OOM-induced crash loop. Evidence: memory at 99%, 12 restarts, OOMKilled in logs. Per KB-003: increase JVM heap, raise container memory limit, clear temp files.
+          Calling <span class="trace-tool">create_ticket</span>({ severity: "critical", team: "SRE Team" })<br>
+          <span class="trace-result">→ INC-4721 created · SLA: 1 hour · Trello card published</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TRADE-OFFS ══ -->
+  <div class="section" id="tradeoffs">
+    <div class="section-label">Reflection</div>
+    <div class="section-title">Design <span>Trade-offs</span></div>
+
+    <div class="tradeoff-grid">
+      <div class="tradeoff-card">
+        <div class="tradeoff-title">✅ What Worked Well</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">✓</span>n8n's native LangChain agent node provided the ReAct reasoning loop out of the box, letting design effort focus on tool quality and safety rather than loop plumbing.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">✓</span>Embedding runbooks directly in the Code node (rather than an external vector store) made the RAG layer portable, fast, and zero-dependency — a pragmatic choice for a demo environment.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">✓</span>The Safety Layer running as a pre-agent Code node means injection attempts never consume LLM tokens and can't influence the system prompt.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">✓</span>Trello integration demonstrates a real side-effect action, distinguishing the system from a pure chatbot.</div>
+      </div>
+      <div class="tradeoff-card">
+        <div class="tradeoff-title">⚠️ Known Trade-offs &amp; Next Steps</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">→</span><strong>Simulated tool data:</strong> All metrics, logs, and service states are dummy data. In production these would call real APIs (Datadog, Splunk, PagerDuty). The reasoning logic remains identical.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">→</span><strong>RAG scaling:</strong> Keyword search doesn't handle synonyms well. Production upgrade: embed runbooks into a vector store (e.g. Pinecone) for semantic similarity matching.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">→</span><strong>Memory scope:</strong> Window buffer resets when n8n restarts. Production: persist session memory to Redis or PostgreSQL for cross-session continuity.</div>
+        <div class="tradeoff-row"><span class="tradeoff-icon">→</span><strong>Auth:</strong> Demo credentials are hardcoded in the UI. Production: replace with OAuth / SSO and server-side session management.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<div class="footer" style="max-width:none;padding-left:60px;padding-right:60px;">
+  <div>Otic · Agentic AI IT Support Agent · Architecture Document</div>
+  <div style="display:flex;gap:20px;">
+    <span>n8n + OpenAI GPT-4o</span>
+    <span>·</span>
+    <span>React + Vite UI</span>
+    <span>·</span>
+    <span>Trello Integration</span>
+  </div>
+</div>
+
+</body>
+</html>
