@@ -1,6 +1,6 @@
 # 🤖 Otic IT Support Agent
 
-> **Agentic AI Internship Practical Assessment** — Otic  
+> **Agentic AI Internship Practical Assignment** — Otic  
 > An Agentic AI IT Support Assistant that diagnoses and resolves IT incidents using a structured multi-step reasoning loop, tool orchestration, RAG grounding, memory, safety guardrails, and full observability.
 
 ---
@@ -334,7 +334,7 @@ User: "Disk usage is critically high on web-01"
 
 ## 📄 License
 
-This project was built by **JOSHUA BONGO** as part of the **Otic Agentic AI Internship Practical Assessment**.
+This project was built by **JOSHUA BONGO** as part of the **Otic Agentic AI Internship Practical Assignment**.
 
 ---
 
